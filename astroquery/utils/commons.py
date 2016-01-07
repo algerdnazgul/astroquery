@@ -19,25 +19,29 @@ from astropy.utils import OrderedDict
 import astropy.utils.data as aud
 from astropy.io import fits, votable
 
-try:
-    from astropy.coordinates import BaseCoordinateFrame
-    ICRSCoordGenerator = lambda *args, **kwargs: coord.SkyCoord(*args, frame='icrs', **kwargs)
-    GalacticCoordGenerator = lambda *args, **kwargs: coord.SkyCoord(*args, frame='galactic', **kwargs)
-    FK5CoordGenerator = lambda *args, **kwargs: coord.SkyCoord(*args, frame='fk5', **kwargs)
-    FK4CoordGenerator = lambda *args, **kwargs: coord.SkyCoord(*args, frame='fk4', **kwargs)
-    ICRSCoord = coord.SkyCoord
-    CoordClasses = (coord.SkyCoord, BaseCoordinateFrame)
-except ImportError:
-    from astropy.coordinates import SphericalCoordinatesBase as BaseCoordinateFrame
-    ICRSCoordGenerator = lambda *args, **kwargs: coord.ICRS(*args, **kwargs)
-    GalacticCoordGenerator = lambda *args, **kwargs: coord.Galactic(*args, **kwargs)
-    FK5CoordGenerator = lambda *args, **kwargs: coord.FK5(*args, **kwargs)
-    FK4CoordGenerator = lambda *args, **kwargs: coord.FK4(*args, **kwargs)
-    ICRSCoord = coord.ICRS
-    CoordClasses = (coord.SphericalCoordinatesBase,)
+from astropy.coordinates import BaseCoordinateFrame
 
 from ..exceptions import TimeoutError
 from .. import version
+
+
+def ICRSCoordGenerator(*args, **kwargs):
+    return coord.SkyCoord(*args, frame='icrs', **kwargs)
+
+
+def GalacticCoordGenerator(*args, **kwargs):
+    return coord.SkyCoord(*args, frame='galactic', **kwargs)
+
+
+def FK5CoordGenerator(*args, **kwargs):
+    return coord.SkyCoord(*args, frame='fk5', **kwargs)
+
+
+def FK4CoordGenerator(*args, **kwargs):
+    return coord.SkyCoord(*args, frame='fk4', **kwargs)
+
+ICRSCoord = coord.SkyCoord
+CoordClasses = (coord.SkyCoord, BaseCoordinateFrame)
 
 
 __all__ = ['send_request',
@@ -74,10 +78,12 @@ def send_request(url, data, timeout, request_type='POST', headers={},
     response : `requests.Response`
         Response object returned by the remote server
     """
-    headers['User-Agent'] = 'astropy:astroquery.{vers}'.format(vers=version.version)
+    headers['User-Agent'] = ('astropy:astroquery.{vers}'
+                             .format(vers=version.version))
 
     if hasattr(timeout, "unit"):
-        warnings.warn("Converting timeout to seconds and truncating to integer.")
+        warnings.warn("Converting timeout to seconds and truncating "
+                      "to integer.")
         timeout = int(timeout.to(u.s).value)
 
     try:
@@ -95,10 +101,10 @@ def send_request(url, data, timeout, request_type='POST', headers={},
         return response
 
     except requests.exceptions.Timeout:
-            raise TimeoutError("Query timed out, time elapsed {time}s".
-                               format(time=timeout))
+        raise TimeoutError("Query timed out, time elapsed {time}s".
+                           format(time=timeout))
     except requests.exceptions.RequestException:
-            raise Exception("Query failed\n")
+        raise Exception("Query failed\n")
 
 
 def parse_radius(radius):
@@ -109,7 +115,7 @@ def parse_radius(radius):
 
     Parameters
     ----------
-    radius : str/`~astropy.units.Quantity`
+    radius : str or `~astropy.units.Quantity`
         The radius of a region
 
     Returns
@@ -122,11 +128,8 @@ def parse_radius(radius):
     astropy.coordinates.errors.UnitsError
     AttributeError
     """
-    try:
-        return coord.Angle(radius)
-    except coord.errors.UnitsError:
-        # astropy <0.3 compatibility: Angle can't be instantiated with a unit object
-        return coord.Angle(radius.to(u.degree), unit=u.degree)
+
+    return coord.Angle(radius)
 
 
 def radius_to_unit(radius, unit='degree'):
@@ -135,7 +138,7 @@ def radius_to_unit(radius, unit='degree'):
 
     Parameters
     ----------
-    radius : str/astropy.units.Quantity
+    radius : str or `~astropy.units.Quantity`
         The radius of a region
 
     Returns
@@ -150,13 +153,7 @@ def radius_to_unit(radius, unit='degree'):
         elif hasattr(rad, unit + 's'):
             return getattr(rad, unit + 's')
 
-    # major hack to deal with <0.3 Angle's not having deg/arcmin/etc equivs.
-    if hasattr(rad, 'degree'):
-        return (rad.degree * u.degree).to(unit).value
-    elif hasattr(rad, 'to'):
-        return rad.to(unit).value
-    else:
-        raise TypeError("Radius is an invalid type.")
+    return rad.to(unit).value
 
 
 def parse_coordinates(coordinates):
@@ -168,12 +165,13 @@ def parse_coordinates(coordinates):
 
     Parameters
     ----------
-    coordinates : str/astropy.coordinates object
+    coordinates : str or `astropy.coordinates` object
         Astronomical coordinate
 
     Returns
     -------
-    a subclass of `astropy.coordinates.BaseCoordinateFrame`
+    coordinates : a subclass of `astropy.coordinates.BaseCoordinateFrame`
+
 
     Raises
     ------
@@ -186,11 +184,12 @@ def parse_coordinates(coordinates):
         except coord.name_resolve.NameResolveError:
             try:
                 c = ICRSCoordGenerator(coordinates)
-                warnings.warn("Coordinate string is being interpreted as an ICRS coordinate.")
+                warnings.warn("Coordinate string is being interpreted as an "
+                              "ICRS coordinate.")
             except u.UnitsError:
-                warnings.warn("Only ICRS coordinates can be entered as strings\n"
-                              "For other systems please use the appropriate "
-                              "astropy.coordinates object")
+                warnings.warn("Only ICRS coordinates can be entered as "
+                              "strings.\n For other systems please use the "
+                              "appropriate astropy.coordinates object.")
                 raise u.UnitsError
     elif isinstance(coordinates, CoordClasses):
         if hasattr(coordinates, 'frame'):
@@ -218,7 +217,8 @@ def coord_to_radec(coordinate):
     elif hasattr(C.ra, 'hourangle'):
         ra = C.ra.hourangle
     else:
-        raise Exception("API Error: RA cannot be converted to hour or hourangle.")
+        raise Exception("API Error: RA cannot be converted to hour "
+                        "or hourangle.")
     dec = C.dec.degree
     return ra, dec
 
@@ -236,14 +236,14 @@ class TableList(list):
     >>> t['b']
     2
     """
+
     def __init__(self, inp):
         if not isinstance(inp, OrderedDict):
-            # py3 doesn't let you catch 2 types of errors.
-            errmsg = "Input to TableList must be an OrderedDict or list of (k,v) pairs"
             try:
                 inp = OrderedDict(inp)
             except (TypeError, ValueError):
-                raise ValueError("Input to TableList must be an OrderedDict or list of (k,v) pairs")
+                raise ValueError("Input to TableList must be an OrderedDict "
+                                 "or list of (k,v) pairs")
 
         self._dict = inp
         super(TableList, self).__init__(inp.values())
@@ -255,7 +255,8 @@ class TableList(list):
         elif key in self._dict:
             return self._dict[key]
         else:
-            raise TypeError("TableLists can only be indexed with the named keys and integers.")
+            raise TypeError("TableLists can only be indexed with the "
+                            "named keys and integers.")
 
     def __setitem__(self, value):
         raise TypeError("TableList is immutable.")
@@ -277,13 +278,6 @@ class TableList(list):
 
         return self.format_table_list()
 
-        # This information is often unhelpful
-        # total_rows = sum(len(self.__getitem__(t)) for t in self.keys())
-        # info_str = "<TableList with {keylen} table(s) and {total_rows} total row(s)>".format(keylen=len(list(self.keys())),
-        #                                                                                    total_rows=total_rows)
-
-        # return info_str
-
     def format_table_list(self):
         """
         Prints the names of all `astropy.table.Table` objects, with their
@@ -295,11 +289,11 @@ class TableList(list):
             return "Empty TableList"
 
         header_str = "TableList with {keylen} tables:".format(keylen=ntables)
-        body_str = "\n".join(["\t'{t_number}:{t_name}' with {ncol} column(s) and {nrow} row(s) ".
-                              format(t_number=t_number,
-                                     t_name=t_name,
-                                     nrow=len(self[t_number]),
-                                     ncol=len(self[t_number].colnames))
+        body_str = "\n".join(["\t'{t_number}:{t_name}' with {ncol} column(s) "
+                              "and {nrow} row(s) "
+                              .format(t_number=t_number, t_name=t_name,
+                                      nrow=len(self[t_number]),
+                                      ncol=len(self[t_number].colnames))
                               for t_number, t_name in enumerate(self.keys())])
         return "\n".join([header_str, body_str])
 
@@ -321,10 +315,11 @@ def _is_coordinate(coordinates):
     Parameters
     ----------
     coordinates : str or `astropy.coordinates` object
-            The target around which to search. It may be specified as a string
-            in which case it is resolved using online services or as the appropriate
-            `astropy.coordinates` object. ICRS coordinates may also be entered as strings
-            as specified in the `astropy.coordinates` module.
+            The target around which to search. It may be specified as a
+            string in which case it is resolved using online services or as
+            the appropriate `astropy.coordinates` object. ICRS coordinates
+            may also be entered as strings as specified in the
+            `astropy.coordinates` module.
 
     Returns
     -------
@@ -341,7 +336,10 @@ def _is_coordinate(coordinates):
 
 
 def suppress_vo_warnings():
-    """Suppresses all warnings of the class `astropy.io.votable.exceptions.VOWarning`."""
+    """
+    Suppresses all warnings of the class
+    `astropy.io.votable.exceptions.VOWarning`.
+    """
     warnings.filterwarnings("ignore", category=votable.exceptions.VOWarning)
 
 
@@ -370,7 +368,8 @@ class FileContainer(object):
         self._timeout = kwargs.get('remote_timeout', aud.conf.remote_timeout)
         if (os.path.splitext(target)[1] == '.fits' and not
                 ('encoding' in kwargs and kwargs['encoding'] == 'binary')):
-            warnings.warn("FITS files must be read as binaries; error is likely.")
+            warnings.warn("FITS files must be read as binaries; error is "
+                          "likely.")
         self._readable_object = get_readable_fileobj(target, **kwargs)
 
     def get_fits(self):
@@ -458,7 +457,8 @@ class FileContainer(object):
         if hasattr(self, '_fits'):
             return "Downloaded FITS file: " + self._fits.__repr__()
         else:
-            return "Downloaded object from URL {} with ID {}".format(self._target, id(self._readable_object))
+            return ("Downloaded object from URL {} with ID {}"
+                    .format(self._target, id(self._readable_object)))
 
 
 def get_readable_fileobj(*args, **kwargs):
@@ -467,6 +467,7 @@ def get_readable_fileobj(*args, **kwargs):
     it in astroquery without affecting astropy core functionality
     """
     return aud.get_readable_fileobj(*args, **kwargs)
+
 
 def parse_votable(content):
     """
